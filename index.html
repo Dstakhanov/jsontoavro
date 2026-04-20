@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Schema Forge — JSON Schema &amp; Avro generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #efeae0;
+    --bg-grain: #e8e2d4;
+    --ink: #1a1714;
+    --ink-soft: #4a4640;
+    --ink-mute: #8a8378;
+    --line: #cec6b4;
+    --line-soft: #d9d2c2;
+    --panel: #f7f3ea;
+    --panel-alt: #fbf8f1;
+    --accent: #c9432a;
+    --accent-soft: #e86b47;
+    --ok: #3d6a3a;
+    --err: #b3341a;
+    --radius: 4px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(201,67,42,0.04), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(26,23,20,0.05), transparent 45%);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* subtle paper grain */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel-alt), var(--panel));
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  .brand h1 {
+    margin: 0;
+    font-family: "Fraunces", serif;
+    font-weight: 600;
+    font-size: 26px;
+    letter-spacing: -0.01em;
+  }
+  .brand h1 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+  .brand .tag {
+    font-size: 12px;
+    color: var(--ink-mute);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-left: 1px solid var(--line);
+    padding-left: 14px;
+  }
+
+  /* toggle — segmented pill */
+  .toggle {
+    display: inline-flex;
+    background: var(--bg-grain);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px;
+    position: relative;
+  }
+  .toggle button {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: 8px 18px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-radius: 999px;
+    transition: color 0.25s ease;
+    position: relative;
+    z-index: 2;
+  }
+  .toggle button.active { color: #fbf8f1; }
+  .toggle .pill {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    background: var(--ink);
+    border-radius: 999px;
+    transition: left 0.28s cubic-bezier(.65,.05,.36,1), width 0.28s cubic-bezier(.65,.05,.36,1);
+    z-index: 1;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: var(--panel);
+  }
+  .col + .col {
+    border-left: 1px solid var(--line);
+    background: var(--panel-alt);
+  }
+
+  .col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    background: transparent;
+  }
+  .col-head .label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .col-head .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink-mute);
+    display: inline-block;
+  }
+  .col-head .dot.ok { background: var(--ok); }
+  .col-head .dot.err { background: var(--err); }
+
+  .col-actions { display: flex; gap: 6px; }
+  .btn {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    padding: 5px 11px;
+    border: 1px solid var(--line);
+    background: var(--bg-grain);
+    color: var(--ink-soft);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:hover { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); color: var(--panel); }
+
+  .editor-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+  }
+
+  textarea.editor, pre.output {
+    flex: 1;
+    margin: 0;
+    padding: 18px 22px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    overflow: auto;
+    white-space: pre;
+    tab-size: 2;
+  }
+  textarea.editor::placeholder {
+    color: var(--ink-mute);
+    font-style: italic;
+  }
+  textarea.editor:focus { background: rgba(255,255,255,0.3); }
+
+  pre.output { white-space: pre; }
+  pre.output.empty { color: var(--ink-mute); font-style: italic; font-family: "IBM Plex Sans", sans-serif; }
+  pre.output.error { color: var(--err); }
+
+  /* syntax highlight tokens */
+  .tk-key   { color: #6b3fa0; }
+  .tk-str   { color: #8a5a1a; }
+  .tk-num   { color: #2a5f7a; }
+  .tk-bool  { color: var(--accent); font-weight: 500; }
+  .tk-null  { color: var(--ink-mute); font-style: italic; }
+  .tk-punct { color: var(--ink-soft); }
+
+  footer {
+    position: relative;
+    z-index: 2;
+    padding: 8px 28px;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-mute);
+    letter-spacing: 0.05em;
+  }
+  footer .status {
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 48px;
+    right: 28px;
+    padding: 10px 16px;
+    background: var(--ink);
+    color: var(--panel);
+    border-radius: var(--radius);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 820px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .col + .col { border-left: none; border-top: 1px solid var(--line); }
+    header { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 18px; }
+    .brand h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Schema <em>Forge</em></h1>
+    <span class="tag">json → schema / avro</span>
+  </div>
+
+  <div class="toggle" role="tablist" aria-label="Формат схемы">
+    <span class="pill" id="pill"></span>
+    <button type="button" id="btn-json" class="active" role="tab" aria-selected="true">JSON Schema</button>
+    <button type="button" id="btn-avro" role="tab" aria-selected="false">Avro</button>
+  </div>
+</header>
+
+<main>
+  <section class="col">
+    <div class="col-head">
+      <div class="label">
+        <span class="dot" id="input-dot"></span>
+        <span>Input · JSON</span>
+      </div>
+      <div class="col-actions">
+        <button class="btn" id="btn-sample">Пример</button>
+        <button class="btn" id="btn-clear">Очистить</button>
+      </div>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="input" class="editor" spellcheck="false" autocomplete="off"
+        placeholder='{
+  "id": 42,
+  "name": "Alice",
+  "tags": ["admin", "editor"]
+}'></textarea>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="col-head">
+      <div class="label">
+        <span class="dot" id="output-dot"></span>
+        <span id="output-label">Output · JSON Schema</span>
+      </div>
+      <div class="col-actions">
+        <button class="btn primary" id="btn-copy">Скопировать</button>
+      </div>
+    </div>
+    <div class="editor-wrap">
+      <pre id="output" class="output empty">Вставьте JSON в левой колонке — схема появится здесь.</pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="status">
+    <span id="status-text">готов</span>
+  </span>
+  <span>schema-forge · debian-ready · 0 deps</span>
+</footer>
+
+<div class="toast" id="toast">скопировано</div>
+
+<script>
+/* ===========================================================
+   Mode toggle
+   =========================================================== */
+const btnJson = document.getElementById('btn-json');
+const btnAvro = document.getElementById('btn-avro');
+const pill    = document.getElementById('pill');
+const outLabel = document.getElementById('output-label');
+let mode = 'json'; // 'json' | 'avro'
+
+function positionPill() {
+  const active = mode === 'json' ? btnJson : btnAvro;
+  pill.style.left  = active.offsetLeft + 'px';
+  pill.style.width = active.offsetWidth + 'px';
+}
+function setMode(m) {
+  mode = m;
+  btnJson.classList.toggle('active', m === 'json');
+  btnAvro.classList.toggle('active', m === 'avro');
+  btnJson.setAttribute('aria-selected', m === 'json');
+  btnAvro.setAttribute('aria-selected', m === 'avro');
+  outLabel.textContent = m === 'json' ? 'Output · JSON Schema' : 'Output · Avro Schema';
+  positionPill();
+  render();
+}
+btnJson.addEventListener('click', () => setMode('json'));
+btnAvro.addEventListener('click', () => setMode('avro'));
+window.addEventListener('load', positionPill);
+window.addEventListener('resize', positionPill);
+
+/* ===========================================================
+   JSON Schema generator (Draft-07)
+   =========================================================== */
+function inferJsonSchema(v) {
+  if (v === null) return { type: 'null' };
+  if (Array.isArray(v)) {
+    if (v.length === 0) return { type: 'array', items: {} };
+    const itemSchemas = v.map(inferJsonSchema);
+    return { type: 'array', items: mergeJsonSchemas(itemSchemas) };
+  }
+  const t = typeof v;
+  if (t === 'object') {
+    const properties = {};
+    const required = [];
+    for (const k of Object.keys(v)) {
+      properties[k] = inferJsonSchema(v[k]);
+      required.push(k);
+    }
+    const out = { type: 'object', properties };
+    if (required.length) out.required = required;
+    return out;
+  }
+  if (t === 'string')  return { type: 'string' };
+  if (t === 'number')  return Number.isInteger(v) ? { type: 'integer' } : { type: 'number' };
+  if (t === 'boolean') return { type: 'boolean' };
+  return {};
+}
+
+/** Merge schemas of array items. If identical → return one. If mixed → anyOf. */
+function mergeJsonSchemas(arr) {
+  const uniq = [];
+  const seen = new Set();
+  for (const s of arr) {
+    const key = JSON.stringify(s);
+    if (!seen.has(key)) { seen.add(key); uniq.push(s); }
+  }
+  if (uniq.length === 1) return uniq[0];
+  return { anyOf: uniq };
+}
+
+function buildJsonSchema(data) {
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    ...inferJsonSchema(data),
+  };
+}
+
+/* ===========================================================
+   Avro schema generator
+   =========================================================== */
+function sanitizeAvroName(name, fallback = 'Field') {
+  let n = String(name).replace(/[^A-Za-z0-9_]/g, '_');
+  if (!/^[A-Za-z_]/.test(n)) n = '_' + n;
+  return n || fallback;
+}
+function pascal(name) {
+  return name.split(/[_\s-]+/).filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join('') || 'Record';
+}
+
+function inferAvroType(v, suggestedName) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) {
+    if (v.length === 0) return { type: 'array', items: ['null', 'string'] };
+    const itemTypes = v.map((item, i) => inferAvroType(item, suggestedName + 'Item'));
+    const merged = mergeAvroTypes(itemTypes);
+    return { type: 'array', items: merged };
+  }
+  const t = typeof v;
+  if (t === 'object') {
+    const recordName = pascal(suggestedName || 'Record');
+    const fields = Object.keys(v).map(k => {
+      const fieldName = sanitizeAvroName(k);
+      const value = v[k];
+      if (value === null) {
+        // nullable with default null
+        return { name: fieldName, type: ['null', 'string'], default: null };
+      }
+      const inferred = inferAvroType(value, pascal(k));
+      return { name: fieldName, type: inferred };
+    });
+    return { type: 'record', name: recordName, fields };
+  }
+  if (t === 'string')  return 'string';
+  if (t === 'number')  return Number.isInteger(v) ? 'long' : 'double';
+  if (t === 'boolean') return 'boolean';
+  return 'string';
+}
+
+/** Merge Avro item types: if identical → one; if mixed → union. */
+function mergeAvroTypes(types) {
+  const uniq = [];
+  const seen = new Set();
+  for (const t of types) {
+    const key = JSON.stringify(t);
+    if (!seen.has(key)) { seen.add(key); uniq.push(t); }
+  }
+  if (uniq.length === 1) return uniq[0];
+  return uniq; // Avro union
+}
+
+function buildAvroSchema(data, rootName = 'Root') {
+  const inferred = inferAvroType(data, rootName);
+  // If root is a primitive/array — wrap so the output is always a valid schema
+  if (typeof inferred === 'string' || Array.isArray(inferred)) {
+    return { type: inferred };
+  }
+  // Add namespace to top-level record for convenience
+  if (inferred && inferred.type === 'record') {
+    return { namespace: 'com.example', ...inferred };
+  }
+  return inferred;
+}
+
+/* ===========================================================
+   Syntax highlighting for output JSON
+   =========================================================== */
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function highlightJson(jsonStr) {
+  // tokenize: strings (keys/values), numbers, booleans, null, punctuation
+  const safe = escapeHtml(jsonStr);
+  return safe.replace(
+    /("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|\b(true|false)\b|\b(null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    (m, key, str, bool, nul, num) => {
+      if (key)  return `<span class="tk-key">${key.slice(0, -1)}</span><span class="tk-punct">:</span>`;
+      if (str)  return `<span class="tk-str">${str}</span>`;
+      if (bool) return `<span class="tk-bool">${bool}</span>`;
+      if (nul)  return `<span class="tk-null">${nul}</span>`;
+      if (num)  return `<span class="tk-num">${num}</span>`;
+      return m;
+    }
+  );
+}
+
+/* ===========================================================
+   Rendering
+   =========================================================== */
+const input  = document.getElementById('input');
+const output = document.getElementById('output');
+const inputDot  = document.getElementById('input-dot');
+const outputDot = document.getElementById('output-dot');
+const statusText = document.getElementById('status-text');
+
+function setStatus(txt, kind) {
+  statusText.textContent = txt;
+  inputDot.className  = 'dot' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : '');
+  outputDot.className = 'dot' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : '');
+}
+
+function render() {
+  const raw = input.value.trim();
+  if (!raw) {
+    output.className = 'output empty';
+    output.textContent = 'Вставьте JSON в левой колонке — схема появится здесь.';
+    setStatus('готов', '');
+    return;
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    output.className = 'output error';
+    output.textContent = '// Ошибка разбора JSON\n// ' + e.message;
+    setStatus('невалидный JSON', 'err');
+    return;
+  }
+  let schema;
+  try {
+    schema = mode === 'json' ? buildJsonSchema(data) : buildAvroSchema(data);
+  } catch (e) {
+    output.className = 'output error';
+    output.textContent = '// Ошибка генерации схемы\n// ' + e.message;
+    setStatus('ошибка генерации', 'err');
+    return;
+  }
+  const pretty = JSON.stringify(schema, null, 2);
+  output.className = 'output';
+  output.innerHTML = highlightJson(pretty);
+  output.dataset.raw = pretty;
+  setStatus(mode === 'json' ? 'JSON Schema сгенерирована' : 'Avro-схема сгенерирована', 'ok');
+}
+
+let renderTimer;
+input.addEventListener('input', () => {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(render, 120);
+});
+
+/* ===========================================================
+   Buttons
+   =========================================================== */
+document.getElementById('btn-sample').addEventListener('click', () => {
+  input.value = JSON.stringify({
+    id: 42,
+    name: "Alice",
+    active: true,
+    score: 97.5,
+    tags: ["admin", "editor"],
+    profile: {
+      email: "alice@example.com",
+      verified: true,
+      age: 29
+    },
+    nickname: null
+  }, null, 2);
+  render();
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  input.value = '';
+  render();
+  input.focus();
+});
+
+const toast = document.getElementById('toast');
+function showToast(text) {
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), 1400);
+}
+
+document.getElementById('btn-copy').addEventListener('click', async () => {
+  const raw = output.dataset.raw;
+  if (!raw) { showToast('нечего копировать'); return; }
+  try {
+    await navigator.clipboard.writeText(raw);
+    showToast('скопировано');
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = raw; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    ta.remove();
+    showToast('скопировано');
+  }
+});
+
+// initial paint
+render();
+</script>
+</body>
+</html>
